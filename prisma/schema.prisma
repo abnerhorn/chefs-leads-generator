@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model School {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  city      String
+  state     String
+  zipcode   String
+  country   String   @default("USA")
+  lat       Float
+  lng       Float
+  hubspotId String?  @unique
+  leads     Lead[]
+  searches  SearchLog[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Lead {
+  id                 String   @id @default(cuid())
+  schoolId           String
+  school             School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  // Company Info
+  company            String
+  companyRanking     Int?
+  url                String?
+  urlValid           Boolean?
+  companyDescription String?
+
+  // Lead Status
+  leadStatus         String   @default("New")
+
+  // Contact Info
+  contactFirstName   String?
+  contactLastName    String?
+  contactTitle       String?
+  contactEmail       String?
+  contactPhone       String?
+
+  // Address (split fields to match spreadsheet)
+  address            String?
+  addressLine2       String?
+  city               String?
+  state              String?
+  zipcode            String?
+  country            String   @default("USA")
+
+  // Calculated
+  distanceMiles      Float?
+  distanceDisplay    String?
+
+  // Social
+  facebookLink       String?
+  instagramLink      String?
+
+  // Metadata
+  source             String   // "google_places", "yelp", "google_dork"
+  googlePlaceId      String?
+  rating             Float?
+  reviewCount        Int?
+  isChain            Boolean  @default(false)
+  chainFlagged       Boolean  @default(false)
+
+  // HubSpot sync
+  hubspotContactId   String?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([schoolId, googlePlaceId])
+  @@index([schoolId])
+}
+
+model SearchLog {
+  id           String   @id @default(cuid())
+  schoolId     String
+  school       School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  searchType   String   // "catering", "pizza_diner", "meal_prep", "custom"
+  searchTerms  String[] // actual terms used
+  radiusMiles  Float
+  resultsCount Int
+  createdAt    DateTime @default(now())
+
+  @@index([schoolId])
+}
