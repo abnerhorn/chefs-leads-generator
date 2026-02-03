@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { LeadGeneratorForm, SearchParams } from "@/components/lead-generator-form"
 import { LeadsTable } from "@/components/leads-table"
 import { RecentSearches } from "@/components/recent-searches"
@@ -12,7 +12,10 @@ export default function Home() {
   const [schoolName, setSchoolName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [isSearchingMore, setIsSearchingMore] = useState(false)
   const [activeSearchId, setActiveSearchId] = useState<string | undefined>()
+  const [currentRadius, setCurrentRadius] = useState(15)
+  const lastSearchParamsRef = useRef<SearchParams | null>(null)
   const { toast } = useToast()
   const { recentSearches, addSearch, removeSearch, clearAllSearches } = useRecentSearches()
 
@@ -20,6 +23,8 @@ export default function Home() {
     setIsLoading(true)
     setSchoolName(params.schoolName)
     setActiveSearchId(undefined) // Clear active search when running new search
+    lastSearchParamsRef.current = params // Store for "Search More"
+    setCurrentRadius(params.radiusMiles)
 
     try {
       const response = await fetch("/api/leads/generate", {
@@ -62,11 +67,106 @@ export default function Home() {
     }
   }
 
+  const handleSearchMore = async (expandRadius: boolean) => {
+    if (!lastSearchParamsRef.current) {
+      toast({
+        title: "Error",
+        description: "No previous search to expand. Please run a new search first.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSearchingMore(true)
+
+    const newRadius = expandRadius 
+      ? Math.min(currentRadius + 10, 50) 
+      : currentRadius
+
+    const searchParams = {
+      ...lastSearchParamsRef.current,
+      radiusMiles: newRadius,
+    }
+
+    try {
+      const response = await fetch("/api/leads/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(searchParams),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to search for more leads")
+      }
+
+      // Deduplicate new leads by googlePlaceId (or company name as fallback)
+      const existingPlaceIds = new Set(
+        leads.map((lead) => lead.googlePlaceId).filter(Boolean)
+      )
+      const existingCompanyNames = new Set(
+        leads.map((lead) => lead.company.toLowerCase())
+      )
+
+      const newLeads = data.leads.filter((lead: Lead) => {
+        if (lead.googlePlaceId && existingPlaceIds.has(lead.googlePlaceId)) {
+          return false
+        }
+        if (!lead.googlePlaceId && existingCompanyNames.has(lead.company.toLowerCase())) {
+          return false
+        }
+        return true
+      })
+
+      if (newLeads.length === 0) {
+        toast({
+          title: "No New Leads Found",
+          description: expandRadius
+            ? `No additional leads found in the expanded ${newRadius} mile radius.`
+            : "No additional leads found in the current search area.",
+        })
+      } else {
+        // Append new leads to existing leads
+        setLeads((prevLeads) => [...prevLeads, ...newLeads])
+        
+        if (expandRadius) {
+          setCurrentRadius(newRadius)
+          // Update stored params with new radius
+          lastSearchParamsRef.current = searchParams
+        }
+
+        toast({
+          title: "Additional Leads Found",
+          description: `Added ${newLeads.length} new leads${expandRadius ? ` (radius expanded to ${newRadius} miles)` : ""}.`,
+        })
+      }
+    } catch (error) {
+      console.error("Error searching for more leads:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to search for more leads",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearchingMore(false)
+    }
+  }
+
   const handleSelectRecentSearch = (search: RecentSearch) => {
     // Restore the saved leads from this search
     setLeads(search.leads)
     setSchoolName(search.schoolName)
     setActiveSearchId(search.id)
+    setCurrentRadius(search.radiusMiles)
+    // Restore search params for "Search More" functionality
+    lastSearchParamsRef.current = {
+      schoolAddress: search.schoolAddress,
+      schoolName: search.schoolName,
+      radiusMiles: search.radiusMiles,
+      searchType: search.searchType,
+      enrichLeads: search.enrichLeads,
+    }
   }
 
   const handleRemoveSearch = (id: string) => {
@@ -156,6 +256,10 @@ export default function Home() {
             schoolName={schoolName}
             onExport={handleExport}
             isExporting={isExporting}
+            onSearchMore={handleSearchMore}
+            isSearchingMore={isSearchingMore}
+            currentRadius={currentRadius}
+            maxRadius={50}
           />
         )}
       </div>

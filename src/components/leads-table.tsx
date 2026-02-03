@@ -13,6 +13,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   ExternalLink,
   Download,
   AlertTriangle,
@@ -23,6 +31,8 @@ import {
   Phone,
   Mail,
   Facebook,
+  Search,
+  Loader2,
 } from "lucide-react"
 
 interface Lead {
@@ -55,10 +65,24 @@ interface LeadsTableProps {
   schoolName?: string
   onExport: () => void
   isExporting: boolean
+  onSearchMore?: (expandRadius: boolean) => void
+  isSearchingMore?: boolean
+  currentRadius?: number
+  maxRadius?: number
 }
 
-export function LeadsTable({ leads, schoolName, onExport, isExporting }: LeadsTableProps) {
+export function LeadsTable({ 
+  leads, 
+  schoolName, 
+  onExport, 
+  isExporting,
+  onSearchMore,
+  isSearchingMore = false,
+  currentRadius = 15,
+  maxRadius = 50,
+}: LeadsTableProps) {
   const [showFlagged, setShowFlagged] = useState(true)
+  const [showExpandRadiusDialog, setShowExpandRadiusDialog] = useState(false)
 
   const filteredLeads = showFlagged
     ? leads
@@ -68,34 +92,114 @@ export function LeadsTable({ leads, schoolName, onExport, isExporting }: LeadsTa
     (lead) => lead.chainFlagged || lead.cuisineFlagged
   ).length
 
+  const canExpandRadius = currentRadius < maxRadius
+  const nextRadius = Math.min(currentRadius + 10, maxRadius)
+
+  const handleSearchMoreClick = () => {
+    if (canExpandRadius) {
+      setShowExpandRadiusDialog(true)
+    } else if (onSearchMore) {
+      onSearchMore(false)
+    }
+  }
+
+  const handleSearchSameRadius = () => {
+    setShowExpandRadiusDialog(false)
+    if (onSearchMore) {
+      onSearchMore(false)
+    }
+  }
+
+  const handleSearchExpandedRadius = () => {
+    setShowExpandRadiusDialog(false)
+    if (onSearchMore) {
+      onSearchMore(true)
+    }
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Generated Leads</CardTitle>
-            <CardDescription>
-              {leads.length} leads found
-              {flaggedCount > 0 && ` (${flaggedCount} flagged for review)`}
-            </CardDescription>
+    <>
+      <Dialog open={showExpandRadiusDialog} onOpenChange={setShowExpandRadiusDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Search for More Leads</DialogTitle>
+            <DialogDescription>
+              Current search radius is {currentRadius} miles. Would you like to expand the search area to find more leads?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-3">
+            <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer" onClick={handleSearchSameRadius}>
+              <div className="flex-1">
+                <p className="font-medium">Search same area</p>
+                <p className="text-sm text-muted-foreground">
+                  Look for additional results within {currentRadius} miles
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer border-blue-200 bg-blue-50" onClick={handleSearchExpandedRadius}>
+              <div className="flex-1">
+                <p className="font-medium text-blue-900">Expand to {nextRadius} miles</p>
+                <p className="text-sm text-blue-700">
+                  Search a wider area for more potential leads
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2">
-            {flaggedCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowFlagged(!showFlagged)}
-              >
-                {showFlagged ? "Hide" : "Show"} Flagged ({flaggedCount})
-              </Button>
-            )}
-            <Button onClick={onExport} disabled={isExporting || leads.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              {isExporting ? "Exporting..." : "Export to Excel"}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExpandRadiusDialog(false)}>
+              Cancel
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Generated Leads</CardTitle>
+              <CardDescription>
+                {leads.length} leads found
+                {flaggedCount > 0 && ` (${flaggedCount} flagged for review)`}
+                {currentRadius && ` • ${currentRadius} mile radius`}
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              {flaggedCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowFlagged(!showFlagged)}
+                >
+                  {showFlagged ? "Hide" : "Show"} Flagged ({flaggedCount})
+                </Button>
+              )}
+              {onSearchMore && (
+                <Button 
+                  variant="outline"
+                  onClick={handleSearchMoreClick}
+                  disabled={isSearchingMore}
+                >
+                  {isSearchingMore ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="mr-2 h-4 w-4" />
+                      Search More
+                    </>
+                  )}
+                </Button>
+              )}
+              <Button onClick={onExport} disabled={isExporting || leads.length === 0}>
+                <Download className="mr-2 h-4 w-4" />
+                {isExporting ? "Exporting..." : "Export to Excel"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
       <CardContent>
         <div className="rounded-md border">
           <Table>
@@ -280,5 +384,6 @@ export function LeadsTable({ leads, schoolName, onExport, isExporting }: LeadsTa
         </div>
       </CardContent>
     </Card>
+    </>
   )
 }
